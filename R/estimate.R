@@ -1,84 +1,31 @@
-#' @export
-fit_pois = function(z,
-                    r = max(z),
-                    solver = "global",
-                    method = "glmnet",
-                    alpha = 1,
-                    use_parallel = F,
-                    ncores = 7,
-                    symmetrize=TRUE,
-                    which_lambda = "lambda.min") {
 
-  if (use_parallel) {
-    if (requireNamespace("doParallel", quietly = TRUE)) {
-      doParallel::registerDoParallel(ncores)
-    } else {
-      stop("doParallel package is needed to use_parallel.")
-    }
-  }
 
-  ptime = proc.time()
-  cat(sprintf('POIS: %s, %s %s ... ', solver, method,
-              ifelse(method == "glmnet", sprintf("(%s)", which_lambda), "")))
-  if (solver == "global") {
-    # cat(sprintf('global: %s ... (%s) \n', method, which_lambda))
-    z <- as.matrix(z)
-    d <- ncol(z) # dim(z)[2]
-    n <- nrow(z)
-    gamh <- matrix(0,d,d)
-    beth <- matrix(0,d,r)
+# Fits POIS-glmnet (new version) -----------------------------------------------------------
 
-    sig <- z2sig(z)
-    for (i in 1:d) {
-      Zi <-  diag(r+1)[z[,i]+1,]
-      y = 1-Zi[,1]
-      x = sig[,-i]
-      if (method == "glmnet") {
-        # require(glmnet)
-        fit <- glmnet::cv.glmnet(x, y, family = "binomial",
-                         standardize=F, alpha=alpha, parallel=use_parallel)
-        b = as.vector( coef(fit, s = which_lambda) )
-      } else if (method == "firth") {
-        # require(logistf)
-        x <- as.matrix(x)
-        fit <- logistf::logistf(y ~ x, firth=TRUE)
-        b <- as.vector(coef(fit))
-      } else if (method == "bayesglm") {
-        # require(arm)
-        x <- as.matrix(x)
-        fit <- arm::bayesglm(y ~ x, family = binomial)
-        b <- fit$coefficients
-      } else {
-        stop('Unrecognized method. Choose either "glmnet" or "firth" or "bayesglm".')
-      }
-
-      gamh[i,-i] <- b[-1]/(-2)
-      temp <- colSums(Zi[,-1])
-      beth[i,] <- exp(b[1]) * temp / sum(temp)
-    }
-    if (symmetrize) gamh <- (gamh + t(gamh))/2
-    theta = log(beth)
-    # list(theta = log(beth), gamh=gamh)
-
-  } else if (solver == "coord") {
-    z <- as.matrix(z)
-    d <- ncol(z) # dim(z)[2]
-    gamh <- gam_estim(z, r, method = method, alpha = alpha,
-                      use_parallel = use_parallel,
-                      which_lambda = which_lambda)
-    theta <- theta_estim(z, gamh, r)
-
-  } else {
-    stop('Unrecognized solver. Choose either "global" or "coord".')
-  }
-
-  dt = proc.time() - ptime
-  cat(sprintf('%3.3f (s).\n', dt["elapsed"]))
-
-  list(theta = theta, gam = gamh)
-}
-
-# glmnet on CV -----------------------------------------------------------
+#' Fit POIS-glment with MMD cross-validation
+#'
+#' The function fits POIS-glment and applies cross-validation (CV) to choose an
+#' optimal regularization parameter.
+#'
+#' The maximum mean discrepency (MMD) is used as the evaluation metric for CV.
+#' The MMD is computed between a sample from the original data and one from the
+#' fitted model. The MMD is computed for a sequence of Gaussian kernels with
+#' varying bandwidths, and aggregated using a user-supplied function.
+#'
+#' @param z is a potentially sparse data array of dimensions: (sample size) x
+#'   (data dimension)
+#' @param r  maximum number of levels (K)'
+#' @param train_ratio train/validation split ratio will be
+#'   train_ratio/(1-train_ratio).
+#' @param nlam number of regularization parameters (lambda) to use; ignored if
+#'   lambda is provided.
+#' @param lambda the vector of regularization parameters to use.
+#' @param nreps the number of CV splits to average over.
+#' @param agg_func the aggregation function for the MMDs.
+#' @return The lambda vector, the regularization curve, a list of fitted POIS
+#'   models, the index of the optimal model and the optimal lambda
+#' @examples
+#' out = fit_pois_glmnet_mmdcv(amazon, lambda = 10^seq(-4,-1.3, length.out = 5))
 #' @export
 fit_pois_glmnet_mmdcv = function(z,
                                 r = max(z),
@@ -137,6 +84,22 @@ fit_pois_glmnet_mmdcv = function(z,
   # reg_curve = sapply(mmd_res, mean)
 }
 
+
+z2sig <- function(z) 2*(z == 0)-1
+
+#' Fit POIS-glment
+#'
+#' The function fits POIS-glment and returns the entire regularization path. No
+#' cross-validation is used.
+#'
+#' @param z is a potentially sparse array of dimensions: (sample size) x (data dimension)
+#' @param r  maximum number of levels (K)'
+#' @param nlam number of regularization parameters (lambda) to use; ignored if
+#'   lambda is provided.
+#' @param lambda the vector of regularization parameters to use
+#' @return A list of fitted POIS models.
+#' @examples
+#' out = fit_pois_glmnet_nocv(amazon, lambda = 10^seq(-4,-1.3, length.out = 5))
 #' @export
 fit_pois_glmnet_nocv = function(z,
                                 r = max(z),
@@ -165,7 +128,6 @@ fit_pois_glmnet_nocv = function(z,
   models = lapply(1:nlam, function(i) list(gamh = matrix(0,d,d),
                                            beth = matrix(0,d,r),
                                            theta = matrix(0,d,r)))
-  # models = lapply(1:3, function(i) list(gamh = matrix(0,4,4),  beth = matrix(0,4,5)))
 
   sig <- z2sig(z)
   for (i in 1:d) {
@@ -174,9 +136,6 @@ fit_pois_glmnet_nocv = function(z,
     x = sig[,-i]
     fit <- glmnet::glmnet(x, y, family = "binomial", lambda = lambda,
                           standardize = F, alpha = 1, parallel = use_parallel)
-    # fit <- glmnet::cv.glmnet(x, y, family = "binomial",
-    #                          standardize=F, alpha=alpha, parallel=use_parallel)
-    # print(dim(coef(fit)))
     temp <- colSums(Zi[,-1])
     for (li in 1:nlam) {
       # b = as.vector( coef(fit)[, li] )
@@ -201,7 +160,90 @@ fit_pois_glmnet_nocv = function(z,
 }
 
 
-z2sig <- function(z) 2*(z == 0)-1
+
+
+# Older versions ----------------------------------------------------------
+
+#' @export
+fit_pois = function(z,
+                    r = max(z),
+                    solver = "global",
+                    method = "glmnet",
+                    alpha = 1,
+                    use_parallel = F,
+                    ncores = 7,
+                    symmetrize=TRUE,
+                    which_lambda = "lambda.min") {
+
+  if (use_parallel) {
+    if (requireNamespace("doParallel", quietly = TRUE)) {
+      doParallel::registerDoParallel(ncores)
+    } else {
+      stop("doParallel package is needed to use_parallel.")
+    }
+  }
+
+  ptime = proc.time()
+  cat(sprintf('POIS: %s, %s %s ... ', solver, method,
+              ifelse(method == "glmnet", sprintf("(%s)", which_lambda), "")))
+  if (solver == "global") {
+    # cat(sprintf('global: %s ... (%s) \n', method, which_lambda))
+    z <- as.matrix(z)
+    d <- ncol(z) # dim(z)[2]
+    n <- nrow(z)
+    gamh <- matrix(0,d,d)
+    beth <- matrix(0,d,r)
+
+    sig <- z2sig(z)
+    for (i in 1:d) {
+      Zi <-  diag(r+1)[z[,i]+1,]
+      y = 1-Zi[,1]
+      x = sig[,-i]
+      if (method == "glmnet") {
+        # require(glmnet)
+        fit <- glmnet::cv.glmnet(x, y, family = "binomial",
+                                 standardize=F, alpha=alpha, parallel=use_parallel)
+        b = as.vector( coef(fit, s = which_lambda) )
+      } else if (method == "firth") {
+        # require(logistf)
+        x <- as.matrix(x)
+        fit <- logistf::logistf(y ~ x, firth=TRUE)
+        b <- as.vector(coef(fit))
+      } else if (method == "bayesglm") {
+        # require(arm)
+        x <- as.matrix(x)
+        fit <- arm::bayesglm(y ~ x, family = binomial)
+        b <- fit$coefficients
+      } else {
+        stop('Unrecognized method. Choose either "glmnet" or "firth" or "bayesglm".')
+      }
+
+      gamh[i,-i] <- b[-1]/(-2)
+      temp <- colSums(Zi[,-1])
+      beth[i,] <- exp(b[1]) * temp / sum(temp)
+    }
+    if (symmetrize) gamh <- (gamh + t(gamh))/2
+    theta = log(beth)
+    # list(theta = log(beth), gamh=gamh)
+
+  } else if (solver == "coord") {
+    z <- as.matrix(z)
+    d <- ncol(z) # dim(z)[2]
+    gamh <- gam_estim(z, r, method = method, alpha = alpha,
+                      use_parallel = use_parallel,
+                      which_lambda = which_lambda)
+    theta <- theta_estim(z, gamh, r)
+
+  } else {
+    stop('Unrecognized solver. Choose either "global" or "coord".')
+  }
+
+  dt = proc.time() - ptime
+  cat(sprintf('%3.3f (s).\n', dt["elapsed"]))
+
+  list(theta = theta, gam = gamh)
+}
+
 
 theta_estim <- function(data, gamma=NULL, r){
   n <- dim(data)[1]
