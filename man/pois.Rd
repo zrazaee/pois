@@ -2,7 +2,7 @@
 % Please edit documentation in R/estimate.R
 \name{pois}
 \alias{pois}
-\title{Constructor a POIS model}
+\title{Construct a POIS model}
 \usage{
 pois(Theta, Gamma)
 }

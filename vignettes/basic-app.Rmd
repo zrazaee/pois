@@ -60,7 +60,7 @@ model = out$models[[opt_idx-1]]  # We tend to over-regularize, pick a less regul
 print(model)
 ```
 
-... and plot its $\Gamma$ paramter, i.e., POIS's the interaction matrix:
+... and plot its $\Gamma$ paramter, i.e., POIS's interaction matrix:
 
 ```{r Gamma plot, fig.width=4, fig.height=4}
 par(mar = c(0,0,0,0))
