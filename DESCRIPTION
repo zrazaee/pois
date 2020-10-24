@@ -3,7 +3,7 @@ Type: Package
 Title: The Potts-Ising Model
 Version: 0.3.3
 Author: Arash A. Amini and Zahra S. Razaee
-Maintainer: Zahra S. Razaee <yourself@somewhere.net>
+Maintainer: Zahra S. Razaee <zahra.razaee@cshs.org>
 Description: Implements the Potts-Ising (POIS), a graphical model for sparse discrete multivariate data.
 License: MIT + file LICENSE 
 Encoding: UTF-8
