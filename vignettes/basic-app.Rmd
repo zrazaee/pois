@@ -1,0 +1,73 @@
+---
+title: "Basic application"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{basic-app}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.align = "center",
+  warning=FALSE
+)
+```
+
+First, some setup, though the `RNGkind` does not seem to resolve the reproducibility issue of `mclapply`!
+```{r Setup}
+library(pois)
+library(Matrix)
+library(corrplot)
+library(parallel)
+RNGkind("L'Ecuyer-CMRG")
+set.seed(1000)
+```
+Let us now load some data. `simcctox` is a simulated dataset avaialbe in the package. It is simulated from a POIS model fitted to a real toxicity data. We pick a ranfom subsample of size 150 from simcctox dataset as a toy example:
+```{r Load data}
+X = simcctox[sample(nrow(simcctox), 150), ] # 
+X = order_cols_by_freq(X)[, 1:12] # order columns by frequency and pick the first 12
+```
+
+We check whether any column has 0 or 1 observations. `glmnet` would complain in this case:
+```{r Check 01}
+check_01_cols(X)  # check whether any columns has 0 or 1 observations
+```
+
+The 0-1 issue could still happen during CV-subsampling, even if the original data has passed the test. The code does not check for that right now (or try to resample to avoid it), so better check to make sure the column sums are large enough:
+```{r Check colSums}
+Matrix::colSums(X)
+```
+
+We can now fit the POIS model with pair-complement MMD cross-validation:
+```{r Fit POIS with CV}
+out = fit_pois_glmnet_mmdcv(X, nlam = 5, nreps = 3) 
+opt_idx = out$opt_idx
+printf('Optimal model = #%d, with lambda = %3.2e', opt_idx, out$opt_lambda)
+```
+
+Let us also plot the regularization curve (pair-complement MMDvs. $\lambda$):
+```{r Plot reg. curve, fig.width=4, fig.height=3}
+par(mar = c(4,4,0,0))
+plot(out$lambda, out$reg_curve, log = "x", type="l", xlab="lambda", ylab="pair-complement MMD")
+```
+
+Let us pick a less regularized model that what CV gives ...
+```{r}
+model = out$models[[opt_idx-1]]  # We tend to over-regularize, pick a less regularized model
+print(model)
+```
+
+... and plot its $\Gamma$ paramter, i.e., POIS's the interaction matrix:
+
+```{r Gamma plot, fig.width=4, fig.height=4}
+par(mar = c(0,0,0,0))
+corr_type = "upper" # "full"
+corrplot(model$Gamma, is.corr = F, type=corr_type, method = "square", 
+         tl.cex = 0.8, tl.col = "black", diag = F,
+         col=colorRampPalette(c("blue","gray","red"))(50))
+
+```
+

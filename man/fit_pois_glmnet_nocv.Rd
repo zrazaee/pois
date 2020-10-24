@@ -16,9 +16,10 @@ fit_pois_glmnet_nocv(
 )
 }
 \arguments{
-\item{z}{is a potentially sparse array of dimensions: (sample size) x (data dimension)}
+\item{z}{is a potentially sparse count array of dimensions: (sample size) x
+(data dimension). The entries of z should take values in {0,1,2,...,r}.}
 
-\item{r}{maximum number of levels (K)'}
+\item{r}{maximum number of levels (K). Defaults to r = max(z).}
 
 \item{nlam}{number of regularization parameters (lambda) to use; ignored if
 lambda is provided.}

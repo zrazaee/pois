@@ -13,6 +13,12 @@ tic = function() proc.time()["elapsed"]
 toc = function(t0) proc.time()["elapsed"] - t0
 
 #' @export
+check_01_cols = function(X) {
+  any(Matrix::colSums(X != 0) <= 1)
+}
+
+
+#' @export
 remove_sparse_rowcol = function(X, thersh=1)  {
   prev_dim = c(0,0)
   new_dim = dim(X)
@@ -25,6 +31,11 @@ remove_sparse_rowcol = function(X, thersh=1)  {
   }
   cat('\n')
   return(X)
+}
+
+#' @export
+remove_sparse_cols = function(X, thersh=1)  {
+    X[ , Matrix::colSums(X > 0) > thersh]
 }
 
 #' @export

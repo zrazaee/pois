@@ -1,12 +1,11 @@
 Package: pois
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.3.1
-Author: Arash A. Amini and Zahra Razaee
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
-License: MIT + file LICENSE
+Title: The Potts-Ising Model
+Version: 0.3.3
+Author: Arash A. Amini and Zahra S. Razaee
+Maintainer: Zahra S. Razaee <yourself@somewhere.net>
+Description: Implements the Potts-Ising (POIS), a graphical model for sparse discrete multivariate data.
+License: MIT + file LICENSE 
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.1.0
@@ -14,7 +13,9 @@ Suggests:
     testthat,
     doParallel,
     arm,
-    logistf
+    logistf,
+    knitr,
+    rmarkdown
 Depends: 
     R (>= 2.10)
 Imports: 
@@ -25,3 +26,4 @@ Imports:
 LinkingTo: 
     Rcpp,
     RcppArmadillo
+VignetteBuilder: knitr

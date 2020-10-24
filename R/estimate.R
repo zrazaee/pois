@@ -1,4 +1,26 @@
 
+#' Construct a POIS model
+#'
+#' Creates an object of the POIS model class
+#'
+#' @param Theta The Theta parameter of POIS model (d x K)
+#' @param Gamma The Gamma (interaction) parameter of the model (d x d)
+#' @export
+pois = function(Theta, Gamma) {
+  if (nrow(Theta) != nrow(Gamma) || nrow(Gamma) != ncol(Gamma))
+    stop("Parameter dimension mismatch.")
+  structure(list(Theta = Theta, Gamma = Gamma), class = "pois")
+}
+
+#' @export
+print.pois = function(mod) {
+  printf("Pois model with dimension = %d and # of levels %d.\nPervalance of -Inf in Theta = %g\n",
+         nrow(mod$Theta), ncol(mod$Theta), sum(mod$Theta == -Inf) / prod(dim(mod$Theta)))
+
+}
+
+
+
 
 # Fits POIS-glmnet (new version) -----------------------------------------------------------
 
@@ -59,7 +81,7 @@ fit_pois_glmnet_mmdcv = function(z,
     X = z[-row_idx, ] # validation set
     for (i in 1:nlam) {
       printf('lam = %3.2e  ', lambda[i])
-      Y = sample_pois(100, mods[[i]]$theta, mods[[i]]$gamh, burn_in = 5000, spacing = 100, verb = F)
+      Y = sample_pois(100, mods[[i]]$Theta, mods[[i]]$Gamma, burn_in = 5000, spacing = 100, verb = F)
       mmd_res[i] = mmd_res[i] +
         mean(pair_complement_mmd(X, Y, agg_func = agg_func, max_npairs = 200))
     }
@@ -67,7 +89,7 @@ fit_pois_glmnet_mmdcv = function(z,
   reg_curve = mmd_res / nreps
   opt_idx = which.min(reg_curve)
   opt_lambda = lambda[opt_idx]
-  printf('--- End of CV --- Chose lam = 3.2f\n', opt_lambda)
+  printf('--- End of CV --- Chose lam = %3.2f\n', opt_lambda)
 
   # fitting the final model
   printf('Fitting the final model ... \n')
@@ -79,7 +101,7 @@ fit_pois_glmnet_mmdcv = function(z,
                               ncores = ncores,
                               symmetrize = symmetrize)
 
-  list(lambda = lambda, reg_curve = mmd_res, models = mods,
+  list(lambda = lambda, reg_curve = reg_curve, models = mods,
        opt_idx = opt_idx, opt_lambda = opt_lambda)
   # reg_curve = sapply(mmd_res, mean)
 }
@@ -92,8 +114,9 @@ z2sig <- function(z) 2*(z == 0)-1
 #' The function fits POIS-glment and returns the entire regularization path. No
 #' cross-validation is used.
 #'
-#' @param z is a potentially sparse array of dimensions: (sample size) x (data dimension)
-#' @param r  maximum number of levels (K)'
+#' @param z is a potentially sparse count array of dimensions: (sample size) x
+#'   (data dimension). The entries of z should take values in {0,1,2,...,r}.
+#' @param r  maximum number of levels (K). Defaults to r = max(z).
 #' @param nlam number of regularization parameters (lambda) to use; ignored if
 #'   lambda is provided.
 #' @param lambda the vector of regularization parameters to use
@@ -118,6 +141,10 @@ fit_pois_glmnet_nocv = function(z,
     }
   }
 
+  if (any(Matrix::colSums(z != 0) <= 1))
+    stop("Some of the columns have 1 or 0 observations.
+         glmnet cannot handle this. Please remove the columns and try again.")
+
   ptime = proc.time()
   cat('POIS: glment, global, nocv ... ')
 
@@ -125,9 +152,9 @@ fit_pois_glmnet_nocv = function(z,
   d <- ncol(z) # dim(z)[2]
   n <- nrow(z)
   nlam <- length(lambda)
-  models = lapply(1:nlam, function(i) list(gamh = matrix(0,d,d),
+  models = lapply(1:nlam, function(i) list(Gamma = matrix(0,d,d),
                                            beth = matrix(0,d,r),
-                                           theta = matrix(0,d,r)))
+                                           Theta = matrix(0,d,r)))
 
   sig <- z2sig(z)
   for (i in 1:d) {
@@ -140,19 +167,24 @@ fit_pois_glmnet_nocv = function(z,
     for (li in 1:nlam) {
       # b = as.vector( coef(fit)[, li] )
       b = as.vector( coef(fit, s = lambda[li]) )
-      models[[li]]$gamh[i,-i] <- b[-1]/(-2)
+      models[[li]]$Gamma[i,-i] <- b[-1]/(-2)
       models[[li]]$beth[i,] <- exp(b[1]) * temp / sum(temp)
     }
   }
 
   for (li in 1:nlam) {
-    if (symmetrize) models[[li]]$gamh <- symmetrize_matrix(models[[li]]$gamh)
-    models[[li]]$theta = log(models[[li]]$beth)
-    models[[li]]$beth = NULL
+    Gamma = models[[li]]$Gamma
+    if (symmetrize) Gamma = symmetrize_matrix(Gamma)
+    Theta = log(models[[li]]$beth)
+    rownames(Theta) = rownames(Gamma) = colnames(Gamma) = colnames(z)
+    models[[li]] = pois(Theta, Gamma)
+    # if (symmetrize) models[[li]]$Gamma <- symmetrize_matrix(models[[li]]$Gamma)
+    # models[[li]]$Theta = log(models[[li]]$beth)
+    # models[[li]]$beth = NULL
   }
 
   dt = proc.time() - ptime
-  cat(sprintf('%3.3f (s).\n', dt["elapsed"]))
+  printf('%3.3f (s).\n', dt["elapsed"])
 
   if (nlam == 1) return(models[[1]])
 
@@ -191,7 +223,7 @@ fit_pois = function(z,
     z <- as.matrix(z)
     d <- ncol(z) # dim(z)[2]
     n <- nrow(z)
-    gamh <- matrix(0,d,d)
+    Gamma <- matrix(0,d,d)
     beth <- matrix(0,d,r)
 
     sig <- z2sig(z)
@@ -218,21 +250,21 @@ fit_pois = function(z,
         stop('Unrecognized method. Choose either "glmnet" or "firth" or "bayesglm".')
       }
 
-      gamh[i,-i] <- b[-1]/(-2)
+      Gamma[i,-i] <- b[-1]/(-2)
       temp <- colSums(Zi[,-1])
       beth[i,] <- exp(b[1]) * temp / sum(temp)
     }
-    if (symmetrize) gamh <- (gamh + t(gamh))/2
-    theta = log(beth)
-    # list(theta = log(beth), gamh=gamh)
+    if (symmetrize) Gamma <- (Gamma + t(Gamma))/2
+    Theta = log(beth)
+    # list(Theta = log(beth), Gamma=Gamma)
 
   } else if (solver == "coord") {
     z <- as.matrix(z)
     d <- ncol(z) # dim(z)[2]
-    gamh <- gam_estim(z, r, method = method, alpha = alpha,
+    Gamma <- gam_estim(z, r, method = method, alpha = alpha,
                       use_parallel = use_parallel,
                       which_lambda = which_lambda)
-    theta <- theta_estim(z, gamh, r)
+    Theta <- theta_estim(z, Gamma, r)
 
   } else {
     stop('Unrecognized solver. Choose either "global" or "coord".')
@@ -241,7 +273,8 @@ fit_pois = function(z,
   dt = proc.time() - ptime
   cat(sprintf('%3.3f (s).\n', dt["elapsed"]))
 
-  list(theta = theta, gam = gamh)
+  # list(Theta = Theta, gam = Gamma)
+  pois(Theta, Gamma)
 }
 
 
@@ -276,7 +309,7 @@ gam_estim <- function(data, r, method, alpha = alpha,
   fit = NULL
   # coeff = c()
   theta_init = mat.or.vec(d,r)
-  gamh <- matrix(0,d,d)
+  Gamma <- matrix(0,d,d)
 
   # cat(sprintf('coordinate descent: %s ... (fixed intercept)\n',method))
   for(i in 1:d) {
@@ -300,14 +333,14 @@ gam_estim <- function(data, r, method, alpha = alpha,
       b = as.vector( coef(fit, s = which_lambda) )
       # print(b)
       # plot(fit)
-      gamh[i,-i] <- -b[-1]/2
+      Gamma[i,-i] <- -b[-1]/2
     } else if (method == "firth") {
       # require(logistf)
       x <- as.matrix(x)
       # fit <- logistf(y~x-1+offset(b0), dat, firth=TRUE)
       fit <- logistf::logistf(y~x-1+offset(rep(b0,n)), firth=TRUE)
       b <- fit$coefficients
-      gamh[i,-i] <- -b/2
+      Gamma[i,-i] <- -b/2
     } else if (method == "bayesglm") {
       # require(arm)
       x <- as.matrix(x)
@@ -315,17 +348,17 @@ gam_estim <- function(data, r, method, alpha = alpha,
       fit <- arm::bayesglm(y ~ x-1+offset(rep(b0,n)), family = binomial)
       #       #fit <- logistf(b ~ . ,data=df, firth=TRUE)
       b <- fit$coefficients
-      gamh[i,-i] <- -b/2
+      Gamma[i,-i] <- -b/2
     } else {
       stop('Unrecognized method. Choose either "glmnet" or "firth" or "bayesglm".')
     }
   }
 
-  gam_estim <- (gamh + t(gamh))/2
+  gam_estim <- (Gamma + t(Gamma))/2
   colnames(gam_estim) = colnames(data)
   return(gam_estim)
-  # colnames(gamh) = colnames(data)
-  # return(gamh)
+  # colnames(Gamma) = colnames(data)
+  # return(Gamma)
 }
 
 bisection_betaestim = function(a,b,max_iter,n,n0,s){
