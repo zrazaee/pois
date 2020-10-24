@@ -2,7 +2,7 @@
 title: "Basic application"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{basic-app}
+  %\VignetteIndexEntry{Basic application}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
