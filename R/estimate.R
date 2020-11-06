@@ -14,12 +14,23 @@ pois = function(Theta, Gamma) {
 
 #' @export
 print.pois = function(mod) {
-  printf("Pois model with dimension = %d and # of levels %d.\nPervalance of -Inf in Theta = %g\n",
-         nrow(mod$Theta), ncol(mod$Theta), sum(mod$Theta == -Inf) / prod(dim(mod$Theta)))
+  printf("Pois model with dimension = %d and # of levels %d.\nPervalance of -Inf in Theta = %2.2f%%\n",
+         nrow(mod$Theta), ncol(mod$Theta), 100*sum(mod$Theta == -Inf) / prod(dim(mod$Theta)))
+  printf("Sparsity of Gamma = %2.2f%%\n", 100*sum(mod$Gamma == 0) / prod(dim(mod$Gamma)))
 
 }
 
-
+#' @export
+plot.pois = function(mod, corr_type = "upper",  method = "square", ...) {
+  if (requireNamespace("corrplot", quietly = TRUE)) {
+    corrplot::corrplot(mod$Gamma, is.corr = F, type=corr_type, method = method, 
+            tl.cex = 0.8, tl.col = "black", diag = F,
+            col = colorRampPalette(c("blue","gray","red"))(50), ...)
+  } else {
+    warning('corrplot package is not available. Using Matrix package instead.')
+    imagesc(mod$Gamma)
+  }
+}
 
 
 # Fits POIS-glmnet (new version) -----------------------------------------------------------

@@ -1,7 +1,7 @@
 Package: pois
 Type: Package
 Title: The Potts-Ising Model
-Version: 0.3.3
+Version: 0.3.4
 Authors@R: c(
     person("Arash A.", "Amini", role = c("aut")), 
     person("Zahra S.", "Razaee", email = "zahra.razaee@cshs.org", role = c("aut","cre"))
@@ -17,7 +17,8 @@ Suggests:
     arm,
     logistf,
     knitr,
-    rmarkdown
+    rmarkdown,
+    corrplot
 Depends: 
     R (>= 2.10)
 Imports: 
