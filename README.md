@@ -4,7 +4,7 @@ The R package implementing the Potts-Ising model.
 This is an R package. You can install it by issuing the following commands:
 <pre>
 install.packages("devtools")
-devtools::install_github("aaamini/pois")
+devtools::install_github("zrazaee/pois")
 </pre>
 
 Check out [Basic Application](https://aaamini.github.io/pois/articles/basic-app.html) for how to use some of the functionality. 
